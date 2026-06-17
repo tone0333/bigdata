@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大数据分析看板 · 实验十四</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, "Microsoft YaHei", sans-serif;
+  background: #0f0f23;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+/* ── 系统状态横幅 ── */
+.system-banner {
+  display: none;
+  padding: 0.65rem 2rem;
+  text-align: center;
+  font-size: 0.85rem;
+  animation: slideDown 0.3s ease;
+}
+.system-banner.warning {
+  display: block;
+  background: linear-gradient(135deg, #4a3800, #5c3d00);
+  border-bottom: 1px solid #ff9800;
+  color: #ffcc80;
+}
+.system-banner.warning a {
+  color: #ff9800;
+  font-weight: bold;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+header {
+  text-align: center;
+  padding: 1.5rem 2rem;
+  background: linear-gradient(135deg, #1a1a3e, #2d1b69);
+}
+header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+header p  { font-size: 0.85rem; color: #aaa; margin-bottom: 0.6rem; }
+
+/* 搜索栏 */
+.search-bar {
+  display: flex; justify-content: center; margin-top: 0.3rem;
+}
+.search-bar input {
+  width: 420px; max-width: 90%;
+  padding: 0.5rem 1rem;
+  border: 1px solid #555;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.08);
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-bar input:focus { border-color: #7c4dff; }
+.search-bar input::placeholder { color: #777; }
+
+/* 状态标签 */
+.state-tags {
+  display: flex; justify-content: center; gap: 0.6rem;
+  margin-top: 0.5rem; flex-wrap: wrap; align-items: center;
+}
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  background: rgba(124,77,255,0.2);
+  border: 1px solid rgba(124,77,255,0.4);
+}
+.tag .clear { cursor: pointer; font-weight: bold; margin-left: 2px; }
+.tag .clear:hover { color: #ff5252; }
+
+/* 图表区域 */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  width: 94%;
+  max-width: 1200px;
+  margin: 1.2rem auto;
+}
+.chart-panel {
+  position: relative;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 0.8rem;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.chart-panel .chart-box { width: 100%; height: 420px; }
+
+/* 操作提示 */
+.chart-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 16px;
+  font-size: 0.7rem;
+  color: #555;
+}
+
+/* 返回按钮（下钻时显示） */
+.back-btn {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  z-index: 10;
+  background: rgba(124,77,255,0.25);
+  border: 1px solid #7c4dff;
+  color: #ccc;
+  padding: 4px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+.back-btn:hover { background: rgba(124,77,255,0.5); }
+.back-btn.visible { display: inline-block; }
+
+/* 评论列表 */
+.reviews-section {
+  width: 94%;
+  max-width: 1200px;
+  margin: 0 auto 2rem;
+}
+.reviews-section h3 {
+  font-size: 1rem;
+  margin-bottom: 0.6rem;
+  color: #aaa;
+}
+.review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.review-table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: rgba(124,77,255,0.15);
+  border-bottom: 2px solid rgba(124,77,255,0.3);
+  position: sticky; top: 0;
+}
+.review-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  vertical-align: top;
+}
+.review-table tr:hover td { background: rgba(255,255,255,0.03); }
+
+.sent-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+.sent-badge.正面 { background: rgba(105,240,174,0.2); color: #69f0ae; }
+.sent-badge.负面 { background: rgba(255,82,82,0.25); color: #ff5252; }
+
+@media (max-width: 768px) {
+  .dashboard-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── 系统降级横幅（由 /api/system-status 控制） ── -->
+<div id="systemBanner" class="system-banner">
+  ⚠ <span id="bannerText">当前大模型功能已降级为内置规则库计算，请配置 API Key 以启用完整功能</span>
+  &nbsp;<span id="bannerReason" style="opacity:0.7;font-size:0.78rem;"></span>
+</div>
+
+<header>
+  <h1>大数据分析看板</h1>
+  <p>实验十四 · 系统联调交付 &nbsp;|&nbsp; 数据源: <span id="hdDataSource">-</span> &nbsp;|&nbsp; 记录数: <span id="hdDataRows">-</span></p>
+  <div class="search-bar">
+    <input
+      id="searchInput"
+      type="text"
+      placeholder="搜索评论（支持正则，如 差|烂 、 ^苹果 ）"
+    />
+  </div>
+  <div class="state-tags" id="stateTags">
+    <span style="font-size:0.8rem;color:#777;">当前筛选：</span>
+    <span id="tagCategory" class="tag" style="display:none;">
+      品类: <strong id="tagCategoryVal"></strong>
+      <span class="clear" id="clearCategory">&times;</span>
+    </span>
+    <span id="tagSentiment" class="tag" style="display:none;">
+      情感: <strong id="tagSentimentVal"></strong>
+      <span class="clear" id="clearSentiment">&times;</span>
+    </span>
+    <span id="tagSearch" class="tag" style="display:none;">
+      搜索: <strong id="tagSearchVal"></strong>
+      <span class="clear" id="clearSearch">&times;</span>
+    </span>
+    <span id="tagNone" style="font-size:0.8rem;color:#555;">全部数据</span>
+  </div>
+</header>
+
+<div class="dashboard-grid">
+  <div class="chart-panel" id="categoryPanel">
+    <button class="back-btn" id="backBtn">← 返回上一级</button>
+    <div class="chart-box" id="categoryChart"></div>
+    <span class="chart-hint">🖱 单击：联动筛选 &nbsp;|&nbsp; 双击：维度下钻</span>
+  </div>
+  <div class="chart-panel">
+    <div class="chart-box" id="sentimentChart"></div>
+    <span class="chart-hint">🖱 单击色块：按情感筛选</span>
+  </div>
+</div>
+
+<div class="reviews-section">
+  <h3>评论列表 <span id="reviewCount" style="color:#777;"></span></h3>
+  <table class="review-table">
+    <thead>
+      <tr>
+        <th style="width:10%;">品类</th>
+        <th style="width:8%;">情感</th>
+        <th style="width:12%;">子类</th>
+        <th style="width:45%;">评论内容</th>
+        <th style="width:25%;">LLM 摘要</th>
+      </tr>
+    </thead>
+    <tbody id="reviewBody"></tbody>
+  </table>
+</div>
+
+<script>
+// ================================================================
+//  系统状态检测
+// ================================================================
+function checkSystemStatus() {
+  fetch('/api/system-status')
+    .then(function (r) { return r.json(); })
+    .then(function (status) {
+      // 更新 header 信息
+      document.getElementById('hdDataSource').textContent = status.data_source || 'unknown';
+      document.getElementById('hdDataRows').textContent = status.data_rows || 0;
+
+      // 降级横幅
+      if (!status.llm_active) {
+        var banner = document.getElementById('systemBanner');
+        banner.className = 'system-banner warning';
+        document.getElementById('bannerReason').textContent =
+          '（' + (status.llm_reason || 'API Key 未配置') + '）';
+      }
+    })
+    .catch(function () {
+      console.warn('系统状态检测失败，可能服务未就绪');
+    });
+}
+
+// ================================================================
+//  全局状态机
+// ================================================================
+var dashboardState = {
+  category: null,
+  sentiment: '',
+  searchQuery: '',
+  drillCategory: null,
+};
+
+var savedCategoryData = null;
+
+// ================================================================
+//  工具函数
+// ================================================================
+function debounce(fn, delay) {
+  var timer = null;
+  return function () {
+    var context = this;
+    var args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      fn.apply(context, args);
+    }, delay);
+  };
+}
+
+function barGradient() {
+  return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+    { offset: 0, color: '#7c4dff' },
+    { offset: 1, color: '#448aff' },
+  ]);
+}
+
+// ================================================================
+//  API 请求
+// ================================================================
+function fetchCategoryDistribution() {
+  var params = new URLSearchParams();
+  if (dashboardState.sentiment) params.set('sentiment', dashboardState.sentiment);
+  return fetch('/api/category-distribution?' + params).then(function (r) { return r.json(); });
+}
+
+function fetchSentimentOverview() {
+  var params = new URLSearchParams();
+  if (dashboardState.category) params.set('cat', dashboardState.category);
+  return fetch('/api/sentiment-overview?' + params)
+    .then(function (r) { return r.json(); })
+    .then(function (j) { return j.data; });
+}
+
+function fetchSubCategoryStats(cat) {
+  return fetch('/api/sub-category-stats?cat=' + encodeURIComponent(cat))
+    .then(function (r) { return r.json(); });
+}
+
+function fetchReviews() {
+  var params = new URLSearchParams();
+  if (dashboardState.category) params.set('cat', dashboardState.category);
+  if (dashboardState.sentiment) params.set('sentiment', dashboardState.sentiment);
+  if (dashboardState.searchQuery) params.set('query', dashboardState.searchQuery);
+  params.set('limit', '50');
+  return fetch('/api/reviews?' + params).then(function (r) { return r.json(); });
+}
+
+// ================================================================
+//  图表实例
+// ================================================================
+var categoryChart = null;
+var sentimentChart = null;
+
+// ================================================================
+//  渲染品类分布图（含下钻逻辑）
+// ================================================================
+function renderCategoryChart() {
+  if (dashboardState.drillCategory) {
+    return fetchSubCategoryStats(dashboardState.drillCategory).then(function (subData) {
+      var option = {
+        title: {
+          text: dashboardState.drillCategory + ' · 问题子维度分布',
+          left: 'center',
+          textStyle: { color: '#e0e0e0', fontSize: 15 },
+        },
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: subData.categories,
+          axisLabel: { color: '#ccc', rotate: 30 },
+        },
+        yAxis: { type: 'value', axisLabel: { color: '#ccc' } },
+        series: [{
+          type: 'bar',
+          data: subData.counts,
+          itemStyle: { color: barGradient() },
+        }],
+      };
+      categoryChart.setOption(option, true);
+      document.getElementById('backBtn').classList.add('visible');
+    });
+  }
+
+  return fetchCategoryDistribution().then(function (data) {
+    savedCategoryData = data;
+    var option = {
+      title: {
+        text: '商品品类分布',
+        left: 'center',
+        textStyle: { color: '#e0e0e0', fontSize: 15 },
+      },
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: data.categories,
+        axisLabel: { color: '#ccc', rotate: 30 },
+      },
+      yAxis: { type: 'value', axisLabel: { color: '#ccc' } },
+      series: [{
+        type: 'bar',
+        data: data.counts,
+        itemStyle: { color: barGradient() },
+      }],
+    };
+    categoryChart.setOption(option, true);
+    document.getElementById('backBtn').classList.remove('visible');
+  });
+}
+
+// ================================================================
+//  渲染情感堆叠图
+// ================================================================
+function renderSentimentChart() {
+  return fetchSentimentOverview().then(function (data) {
+    var sentimentTypes = [];
+    var seen = {};
+    data.forEach(function (item) {
+      Object.keys(item).forEach(function (key) {
+        if (key !== 'category' && !seen[key]) {
+          seen[key] = true;
+          sentimentTypes.push(key);
+        }
+      });
+    });
+
+    var categories = data.map(function (item) { return item.category; });
+    var sentimentColors = { '正面': '#69f0ae', '负面': '#ff5252' };
+    var series = sentimentTypes.map(function (sent) {
+      return {
+        name: sent,
+        type: 'bar',
+        stack: 'total',
+        data: data.map(function (item) { return item[sent] || 0; }),
+        itemStyle: { color: sentimentColors[sent] || '#7c4dff' },
+      };
+    });
+
+    var option = {
+      title: {
+        text: '各品类情感分布',
+        left: 'center',
+        textStyle: { color: '#e0e0e0', fontSize: 15 },
+      },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { top: 30, textStyle: { color: '#ccc' } },
+      xAxis: {
+        type: 'category',
+        data: categories,
+        axisLabel: { color: '#ccc', rotate: 30 },
+      },
+      yAxis: { type: 'value', axisLabel: { color: '#ccc' } },
+      series: series,
+    };
+    sentimentChart.setOption(option, true);
+  });
+}
+
+// ================================================================
+//  渲染评论列表
+// ================================================================
+function renderReviews() {
+  return fetchReviews().then(function (result) {
+    document.getElementById('reviewCount').textContent =
+      '(共 ' + result.total + ' 条匹配)';
+
+    var tbody = document.getElementById('reviewBody');
+    if (result.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;padding:2rem;">无匹配记录</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = result.data.map(function (row) {
+      var sentCls = row.sentiment || '';
+      var reviewText = (row.review || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      var summaryText = (row.summary || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<tr>' +
+        '<td>' + (row.cat || '') + '</td>' +
+        '<td><span class="sent-badge ' + sentCls + '">' + sentCls + '</span></td>' +
+        '<td>' + (row.category || '') + '</td>' +
+        '<td>' + reviewText + '</td>' +
+        '<td>' + summaryText + '</td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+
+// ================================================================
+//  统一刷新
+// ================================================================
+function refreshAll() {
+  updateStateTags();
+  renderCategoryChart();
+  renderSentimentChart();
+  renderReviews();
+}
+
+// ================================================================
+//  状态标签 UI
+// ================================================================
+function updateStateTags() {
+  var hasFilter = false;
+
+  if (dashboardState.category) {
+    document.getElementById('tagCategory').style.display = '';
+    document.getElementById('tagCategoryVal').textContent = dashboardState.category;
+    hasFilter = true;
+  } else {
+    document.getElementById('tagCategory').style.display = 'none';
+  }
+
+  if (dashboardState.sentiment) {
+    document.getElementById('tagSentiment').style.display = '';
+    document.getElementById('tagSentimentVal').textContent = dashboardState.sentiment;
+    hasFilter = true;
+  } else {
+    document.getElementById('tagSentiment').style.display = 'none';
+  }
+
+  if (dashboardState.searchQuery) {
+    document.getElementById('tagSearch').style.display = '';
+    document.getElementById('tagSearchVal').textContent = dashboardState.searchQuery;
+    hasFilter = true;
+  } else {
+    document.getElementById('tagSearch').style.display = 'none';
+  }
+
+  document.getElementById('tagNone').style.display = hasFilter ? 'none' : '';
+}
+
+// ================================================================
+//  事件绑定
+// ================================================================
+function bindEvents() {
+  // 搜索框：400ms 防抖
+  var searchInput = document.getElementById('searchInput');
+  var debouncedSearch = debounce(function () {
+    dashboardState.searchQuery = searchInput.value.trim();
+    refreshAll();
+  }, 400);
+  searchInput.addEventListener('input', debouncedSearch);
+
+  // 清除标签
+  document.getElementById('clearCategory').addEventListener('click', function () {
+    dashboardState.category = null;
+    dashboardState.drillCategory = null;
+    refreshAll();
+  });
+  document.getElementById('clearSentiment').addEventListener('click', function () {
+    dashboardState.sentiment = '';
+    refreshAll();
+  });
+  document.getElementById('clearSearch').addEventListener('click', function () {
+    dashboardState.searchQuery = '';
+    document.getElementById('searchInput').value = '';
+    refreshAll();
+  });
+
+  // 品类图单击：联动筛选
+  categoryChart.on('click', function (params) {
+    if (!params.name) return;
+    if (dashboardState.drillCategory) return;
+    if (dashboardState.category === params.name) {
+      dashboardState.category = null;
+    } else {
+      dashboardState.category = params.name;
+    }
+    refreshAll();
+  });
+
+  // 品类图双击：下钻
+  categoryChart.on('dblclick', function (params) {
+    if (!params.name) return;
+    if (dashboardState.drillCategory) return;
+    dashboardState.drillCategory = params.name;
+    renderCategoryChart();
+  });
+
+  // 返回按钮
+  document.getElementById('backBtn').addEventListener('click', function () {
+    dashboardState.drillCategory = null;
+    renderCategoryChart();
+  });
+
+  // 情感堆叠图单击：按情感联动
+  sentimentChart.on('click', function (params) {
+    if (!params.seriesName) return;
+    if (dashboardState.sentiment === params.seriesName) {
+      dashboardState.sentiment = '';
+    } else {
+      dashboardState.sentiment = params.seriesName;
+    }
+    refreshAll();
+  });
+
+  // 窗口 resize
+  window.addEventListener('resize', function () {
+    if (categoryChart) categoryChart.resize();
+    if (sentimentChart) sentimentChart.resize();
+  });
+}
+
+// ================================================================
+//  启动
+// ================================================================
+(function init() {
+  checkSystemStatus();
+  categoryChart = echarts.init(document.getElementById('categoryChart'));
+  sentimentChart = echarts.init(document.getElementById('sentimentChart'));
+  bindEvents();
+  refreshAll();
+})();
+</script>
+</body>
+</html>

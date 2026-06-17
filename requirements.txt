@@ -1,0 +1,14 @@
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pandas>=2.0.0
+numpy>=1.24.0
+duckdb>=0.9.0
+scipy>=1.10.0
+openai>=1.0.0
+tenacity>=8.0.0
+tqdm>=4.60.0
+scikit-learn>=1.2.0
+joblib>=1.2.0
+lightgbm>=4.0.0
+shap>=0.40.0
+matplotlib>=3.7.0

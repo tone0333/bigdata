@@ -1,0 +1,48 @@
+# ── Python 虚拟环境 ──────────────────────────────────
+.venv/
+venv/
+env/
+test_env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ── 大体积数据文件 ───────────────────────────────────
+data/*.csv
+data/*.parquet
+data/*.db
+data/*.db.tmp
+data/*.db.wal
+*.csv
+!requirements.txt
+
+# ── DuckDB / SQLite 数据库及锁文件 ────────────────────
+*.db
+*.db.tmp
+*.db.wal
+*.sqlite
+*.sqlite3
+
+# ── 流式管道运行产物 ─────────────────────────────────
+data/scored_events.csv
+data/dead_letter.log
+
+# ── Jupyter Notebook 产物 ────────────────────────────
+.ipynb_checkpoints/
+
+# ── IDE 缓存与配置 ───────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# ── 环境变量文件（含 API Key） ───────────────────────
+.env
+
+# ── 模型文件 ─────────────────────────────────────────
+data/model.pkl
+*.pkl
+
+# ── 日志文件 ─────────────────────────────────────────
+*.log
